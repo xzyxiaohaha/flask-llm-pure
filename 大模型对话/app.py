@@ -8,10 +8,10 @@ from datetime import datetime
 import uuid
 
 app = Flask(__name__)
-app.secret_key = 'sk-7a8cfd72d36844f6b1aafb5dbf04944b'  # 请修改为随机密钥
+app.secret_key = 'xxxxxxxxxxxx'  # 请修改为随机密钥
 
 # DeepSeek API配置
-DEEPSEEK_API_KEY = "sk-7a8cfd72d36844f6b1aafb5dbf04944b"  # 请替换为你的API Key
+DEEPSEEK_API_KEY = "xxxxxxxxxxxx"  # 请替换为你的API Key
 DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
 
 
@@ -133,4 +133,5 @@ def get_history():
 
 if __name__ == '__main__':
     init_excel()
+
     app.run(debug=True, host='0.0.0.0', port=5000)
