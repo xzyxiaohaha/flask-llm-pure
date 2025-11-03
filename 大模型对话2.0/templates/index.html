@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepSeek 智能对话</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>DeepSeek 智能对话助手</h1>
+            <div class="session-controls">
+                <div class="session-selector">
+                    <label for="session-select">选择会话:</label>
+                    <select id="session-select">
+                        <option value="">-- 选择会话 --</option>
+                    </select>
+                    <button id="new-session-btn" class="btn-secondary">新建会话</button>
+                    <button id="refresh-sessions-btn" class="btn-secondary">刷新列表</button>
+                </div>
+                <div class="session-info">
+                    <span>当前会话ID: <span id="session-id">{{ session.session_id }}</span></span>
+                    <button id="clear-btn" class="btn-secondary">清空当前会话</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="chat-container">
+            <div id="chat-messages" class="chat-messages">
+                <!-- 消息将在这里显示 -->
+            </div>
+
+            <div class="input-area">
+                <div class="input-group">
+                    <textarea id="message-input" placeholder="请输入您的问题..." rows="3"></textarea>
+                    <button id="send-btn" class="btn-primary">发送</button>
+                </div>
+                <div class="info-text">
+                    <span>支持多轮对话，所有对话记录将自动保存到Excel文件</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <span>DeepSeek正在思考中...</span>
+        </div>
+    </div>
+
+    <script>
+        const chatMessages = document.getElementById('chat-messages');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const sessionSelect = document.getElementById('session-select');
+        const newSessionBtn = document.getElementById('new-session-btn');
+        const refreshSessionsBtn = document.getElementById('refresh-sessions-btn');
+        const loading = document.getElementById('loading');
+
+        // 加载会话列表
+        function loadSessions() {
+            fetch('/sessions')
+                .then(response => response.json())
+                .then(data => {
+                    sessionSelect.innerHTML = '<option value="">-- 选择会话 --</option>';
+                    data.sessions.forEach(session => {
+                        const option = document.createElement('option');
+                        option.value = session.会话ID;
+                        const date = new Date(session.最后活动).toLocaleString();
+                        option.textContent = `${session.会话ID.substring(0, 8)}... (${session.消息数量} 条消息, ${date})`;
+                        sessionSelect.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    console.error('加载会话列表失败:', error);
+                });
+        }
+
+        // 切换会话
+        function switchSession(sessionId) {
+            if (!sessionId) return;
+
+            fetch('/switch_session', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ session_id: sessionId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('session-id').textContent = data.session_id;
+                    displayHistory(data.history);
+                    messageInput.focus();
+                } else {
+                    alert('切换会话失败: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('切换会话失败:', error);
+                alert('切换会话失败');
+            });
+        }
+
+        // 创建新会话
+        function createNewSession() {
+            fetch('/new_session', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('session-id').textContent = data.session_id;
+                    chatMessages.innerHTML = '';
+                    sessionSelect.value = '';
+                    messageInput.focus();
+                    alert(data.message);
+                } else {
+                    alert('创建新会话失败');
+                }
+            })
+            .catch(error => {
+                console.error('创建新会话失败:', error);
+                alert('创建新会话失败');
+            });
+        }
+
+        // 显示历史记录
+        function displayHistory(history) {
+            chatMessages.innerHTML = '';
+            history.forEach(msg => {
+                addMessage(msg.role, msg.content, false);
+            });
+            scrollToBottom();
+        }
+
+        // 加载历史记录
+        function loadHistory() {
+            fetch('/history')
+                .then(response => response.json())
+                .then(data => {
+                    displayHistory(data.history);
+                });
+        }
+
+        // 添加消息到聊天界面
+        function addMessage(role, content, animate = true) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}-message`;
+
+            if (animate) {
+                messageDiv.style.animation = 'fadeIn 0.3s ease-in';
+            }
+
+            const avatar = role === 'user' ? '👤' : '🤖';
+            const name = role === 'user' ? '你' : 'DeepSeek';
+
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <span class="avatar">${avatar}</span>
+                    <span class="name">${name}</span>
+                </div>
+                <div class="message-content">${formatMessage(content)}</div>
+            `;
+
+            chatMessages.appendChild(messageDiv);
+            scrollToBottom();
+        }
+
+        // 格式化消息内容（处理换行等）
+        function formatMessage(content) {
+            return content.replace(/\n/g, '<br>');
+        }
+
+        // 滚动到底部
+        function scrollToBottom() {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // 发送消息
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            // 添加用户消息
+            addMessage('user', message);
+            messageInput.value = '';
+
+            // 显示加载状态
+            loading.classList.remove('hidden');
+            sendBtn.disabled = true;
+
+            // 发送到后端
+            fetch('/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ message: message })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    addMessage('assistant', `错误: ${data.error}`);
+                } else {
+                    addMessage('assistant', data.response);
+                    // 发送消息后刷新会话列表，更新消息数量
+                    loadSessions();
+                }
+            })
+            .catch(error => {
+                addMessage('assistant', `网络错误: ${error}`);
+            })
+            .finally(() => {
+                loading.classList.add('hidden');
+                sendBtn.disabled = false;
+                messageInput.focus();
+            });
+        }
+
+        // 清空对话
+        function clearChat() {
+            if (confirm('确定要清空当前对话历史吗？')) {
+                fetch('/clear', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            chatMessages.innerHTML = '';
+                            document.getElementById('session-id').textContent = data.session_id;
+                            sessionSelect.value = '';
+                            loadSessions();
+                        }
+                    });
+            }
+        }
+
+        // 事件监听
+        sendBtn.addEventListener('click', sendMessage);
+        clearBtn.addEventListener('click', clearChat);
+        newSessionBtn.addEventListener('click', createNewSession);
+        refreshSessionsBtn.addEventListener('click', loadSessions);
+
+        sessionSelect.addEventListener('change', (e) => {
+            if (e.target.value) {
+                switchSession(e.target.value);
+            }
+        });
+
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // 初始化
+        loadSessions();
+        loadHistory();
+        messageInput.focus();
+    </script>
+</body>
+</html>
